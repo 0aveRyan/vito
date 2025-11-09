@@ -4,7 +4,7 @@ import { Form, FormField, FormFields } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { LoaderCircle } from 'lucide-react';
+import { ChevronRightIcon, LoaderCircle } from 'lucide-react';
 import { useForm, usePage } from '@inertiajs/react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import InputError from '@/components/ui/input-error';
@@ -20,6 +20,9 @@ import DatabaseSelect from '@/pages/databases/components/database-select';
 import DatabaseUserSelect from '@/pages/database-users/components/database-user-select';
 import SelectRepo from '@/pages/source-controls/components/select-repo';
 import SelectBranch from '@/pages/source-controls/components/select-branch';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Separator } from '@/components/ui/separator';
+import * as LucideIcons from 'lucide-react';
 
 type CreateSiteForm = {
   server: string;
@@ -93,7 +96,84 @@ export default function CreateSite({
     }
   }, [form.data.type]);
 
+  const getColumnGridClass = (distribution?: string) => {
+    const gridClasses: Record<string, string> = {
+      '50/50': 'grid grid-cols-1 md:grid-cols-2 gap-4',
+      '33/33/33': 'grid grid-cols-1 md:grid-cols-3 gap-4',
+      '25/25/25/25': 'grid grid-cols-1 md:grid-cols-4 gap-4',
+      '40/60': 'grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-4',
+      '60/40': 'grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-4',
+      '30/70': 'grid grid-cols-1 md:grid-cols-[3fr_7fr] gap-4',
+      '70/30': 'grid grid-cols-1 md:grid-cols-[7fr_3fr] gap-4',
+      '20/80': 'grid grid-cols-1 md:grid-cols-[1fr_4fr] gap-4',
+      '80/20': 'grid grid-cols-1 md:grid-cols-[4fr_1fr] gap-4',
+    };
+    return distribution && gridClasses[distribution] ? gridClasses[distribution] : 'grid grid-cols-1 md:grid-cols-2 gap-4';
+  };
+
   const getFormField = (field: DynamicFieldConfig) => {
+    // Handle sections specially
+    if (field.type === 'section') {
+      const IconComponent = field.icon && LucideIcons[field.icon as keyof typeof LucideIcons];
+      const layout = field.layout || 'collapsible';
+
+      // Row layout - side-by-side columns on tablet+
+      if (layout === 'row') {
+        const gridClass = getColumnGridClass(field.columnDistribution);
+        return (
+          <div key={`row-${field.name}`} className="space-y-4">
+            {(field.label || field.description) && (
+              <div>
+                {field.label && (
+                  <div className="flex items-center gap-2 pt-4">
+                    {IconComponent && <IconComponent className="h-5 w-5 text-muted-foreground" />}
+                    <h3 className="text-lg font-semibold">{field.label}</h3>
+                  </div>
+                )}
+                {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
+                <Separator className="mt-2" />
+              </div>
+            )}
+            <div className={gridClass}>{field.children?.map((childConfig) => getFormField(childConfig))}</div>
+          </div>
+        );
+      }
+
+      // Standard section - non-collapsible
+      if (layout === 'standard') {
+        return (
+          <div key={`section-${field.name}`} className="space-y-4">
+            <div className="flex items-center gap-2 pt-4">
+              {IconComponent && <IconComponent className="h-5 w-5 text-muted-foreground" />}
+              <h3 className="text-lg font-semibold">{field.label || field.name}</h3>
+            </div>
+            {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
+            <Separator />
+            <div className="space-y-4 pl-2">{field.children?.map((childConfig) => getFormField(childConfig))}</div>
+          </div>
+        );
+      }
+
+      // Collapsible section (default)
+      return (
+        <Collapsible
+          key={`section-${field.name}`}
+          defaultOpen={field.defaultOpen || false}
+          className="group/collapsible rounded-lg border p-4 my-4"
+        >
+          <CollapsibleTrigger className="flex w-full items-center justify-between">
+            <div className="flex items-center gap-2">
+              {IconComponent && <IconComponent className="h-5 w-5 text-muted-foreground" />}
+              <Label className="cursor-pointer text-base font-semibold">{field.label || field.name}</Label>
+            </div>
+            <ChevronRightIcon className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+          </CollapsibleTrigger>
+          {field.description && <p className="text-sm text-muted-foreground mt-2">{field.description}</p>}
+          <CollapsibleContent className="mt-4 space-y-4">{field.children?.map((childConfig) => getFormField(childConfig))}</CollapsibleContent>
+        </Collapsible>
+      );
+    }
+
     if (field.name === 'source_control') {
       return (
         <FormField key={`field-${field.name}`}>

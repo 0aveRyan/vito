@@ -30,6 +30,76 @@ class SiteTypeServiceProvider extends ServiceProvider
         $this->loadBalancer();
         $this->phpMyAdmin();
         $this->wordpress();
+
+        $this->booted(function () {
+            $this->sortAndGroupAllSiteTypeForms();
+        });
+    }
+
+    private function sortAndGroupAllSiteTypeForms(): void
+    {
+        $types = config('site.types');
+
+        foreach ($types as $typeKey => $typeConfig) {
+            if (isset($typeConfig['form']) && is_array($typeConfig['form'])) {
+                $types[$typeKey]['form'] = $this->sortAndGroupFields($typeConfig['form']);
+            }
+        }
+
+        config(['site.types' => $types]);
+    }
+
+    private function sortAndGroupFields(array $fields): array
+    {
+        // Separate sections from regular fields
+        $sections = [];
+        $regularFields = [];
+        $fieldsToGroup = [];
+
+        foreach ($fields as $field) {
+            if ($field['type'] === 'section') {
+                $sections[$field['name']] = $field;
+            } elseif (! empty($field['sectionName'])) {
+                // Field belongs to a section
+                if (! isset($fieldsToGroup[$field['sectionName']])) {
+                    $fieldsToGroup[$field['sectionName']] = [];
+                }
+                $fieldsToGroup[$field['sectionName']][] = $field;
+            } else {
+                // Regular top-level field
+                $regularFields[] = $field;
+            }
+        }
+
+        // Group fields into their sections
+        $orphanedFields = [];
+        foreach ($fieldsToGroup as $sectionName => $sectionFields) {
+            if (isset($sections[$sectionName])) {
+                // Sort section's children by order
+                usort($sectionFields, fn ($a, $b) => ($a['order'] ?? 0) <=> ($b['order'] ?? 0));
+
+                // Merge with existing children or set new
+                $existingChildren = $sections[$sectionName]['children'] ?? [];
+                $sections[$sectionName]['children'] = array_merge($existingChildren, $sectionFields);
+            } else {
+                // Section doesn't exist, these are orphaned fields
+                $orphanedFields = array_merge($orphanedFields, $sectionFields);
+            }
+        }
+
+        // Merge regular fields and sections
+        $allTopLevelFields = array_merge($regularFields, array_values($sections));
+
+        // Sort top-level fields by order (stable sort)
+        usort($allTopLevelFields, fn ($a, $b) => ($a['order'] ?? 0) <=> ($b['order'] ?? 0));
+
+        // Append orphaned fields at the end (sorted by order)
+        if (! empty($orphanedFields)) {
+            usort($orphanedFields, fn ($a, $b) => ($a['order'] ?? 0) <=> ($b['order'] ?? 0));
+            $allTopLevelFields = array_merge($allTopLevelFields, $orphanedFields);
+        }
+
+        return $allTopLevelFields;
     }
 
     private function php(): void
@@ -40,26 +110,32 @@ class SiteTypeServiceProvider extends ServiceProvider
             ->form(DynamicForm::make([
                 DynamicField::make('php_version')
                     ->component()
-                    ->label('PHP Version'),
+                    ->label('PHP Version')
+                    ->order(10),
                 DynamicField::make('source_control')
                     ->component()
-                    ->label('Source Control'),
+                    ->label('Source Control')
+                    ->order(20),
                 DynamicField::make('repository')
                     ->text()
                     ->component()
-                    ->label('Repository'),
+                    ->label('Repository')
+                    ->order(30),
                 DynamicField::make('branch')
                     ->component()
-                    ->label('Branch'),
+                    ->label('Branch')
+                    ->order(40),
                 DynamicField::make('web_directory')
                     ->text()
                     ->label('Web Directory')
                     ->placeholder('e.g., public, www, dist (leave empty for root)')
-                    ->description('The relative path of your website from /home/vito/your-domain/'),
+                    ->description('The relative path of your website from /home/vito/your-domain/')
+                    ->order(50),
                 DynamicField::make('composer')
                     ->checkbox()
                     ->label('Run `composer install --no-dev`')
-                    ->default(false),
+                    ->default(false)
+                    ->order(60),
             ]))
             ->register();
     }
@@ -72,12 +148,14 @@ class SiteTypeServiceProvider extends ServiceProvider
             ->form(DynamicForm::make([
                 DynamicField::make('php_version')
                     ->component()
-                    ->label('PHP Version'),
+                    ->label('PHP Version')
+                    ->order(10),
                 DynamicField::make('web_directory')
                     ->text()
                     ->label('Web Directory')
                     ->placeholder('e.g., public, www, dist (leave empty for root)')
-                    ->description('The relative path of your website from /home/vito/your-domain/'),
+                    ->description('The relative path of your website from /home/vito/your-domain/')
+                    ->order(20),
             ]))
             ->register();
     }
@@ -90,28 +168,34 @@ class SiteTypeServiceProvider extends ServiceProvider
             ->form(DynamicForm::make([
                 DynamicField::make('php_version')
                     ->component()
-                    ->label('PHP Version'),
+                    ->label('PHP Version')
+                    ->order(10),
                 DynamicField::make('source_control')
                     ->component()
-                    ->label('Source Control'),
+                    ->label('Source Control')
+                    ->order(20),
                 DynamicField::make('web_directory')
                     ->text()
                     ->label('Web Directory')
                     ->default('public')
                     ->placeholder('e.g., public, www, dist (leave empty for root)')
-                    ->description('The relative path of your website from /home/vito/your-domain/'),
+                    ->description('The relative path of your website from /home/vito/your-domain/')
+                    ->order(30),
                 DynamicField::make('repository')
                     ->text()
                     ->label('Repository')
-                    ->placeholder('organization/repository'),
+                    ->placeholder('organization/repository')
+                    ->order(40),
                 DynamicField::make('branch')
                     ->text()
                     ->label('Branch')
-                    ->default('main'),
+                    ->default('main')
+                    ->order(50),
                 DynamicField::make('composer')
                     ->checkbox()
                     ->label('Run `composer install --no-dev`')
-                    ->default(false),
+                    ->default(false)
+                    ->order(60),
             ]))
             ->register();
         RegisterSiteFeature::make(Laravel::id(), 'modern-deployment')
@@ -140,21 +224,25 @@ class SiteTypeServiceProvider extends ServiceProvider
             ->form(DynamicForm::make([
                 DynamicField::make('source_control')
                     ->component()
-                    ->label('Source Control'),
+                    ->label('Source Control')
+                    ->order(10),
                 DynamicField::make('port')
                     ->text()
                     ->label('Port')
                     ->placeholder('3000')
-                    ->description('On which port your app will be running'),
+                    ->description('On which port your app will be running')
+                    ->order(20),
                 DynamicField::make('repository')
                     ->text()
                     ->label('Repository')
                     ->placeholder('organization/repository')
-                    ->description('Your package.json must have start and build scripts'),
+                    ->description('Your package.json must have start and build scripts')
+                    ->order(30),
                 DynamicField::make('branch')
                     ->text()
                     ->label('Branch')
-                    ->default('main'),
+                    ->default('main')
+                    ->order(40),
             ]))
             ->register();
     }
@@ -172,7 +260,8 @@ class SiteTypeServiceProvider extends ServiceProvider
                         LoadBalancerMethod::IP_HASH->value,
                         LoadBalancerMethod::ROUND_ROBIN->value,
                         LoadBalancerMethod::LEAST_CONNECTIONS->value,
-                    ]),
+                    ])
+                    ->order(10),
             ]))
             ->register();
     }
@@ -185,7 +274,8 @@ class SiteTypeServiceProvider extends ServiceProvider
             ->form(DynamicForm::make([
                 DynamicField::make('php_version')
                     ->component()
-                    ->label('PHP Version'),
+                    ->label('PHP Version')
+                    ->order(10),
             ]))
             ->register();
     }
@@ -198,32 +288,40 @@ class SiteTypeServiceProvider extends ServiceProvider
             ->form(DynamicForm::make([
                 DynamicField::make('php_version')
                     ->component()
-                    ->label('PHP Version'),
+                    ->label('PHP Version')
+                    ->order(10),
                 DynamicField::make('title')
                     ->text()
                     ->label('Site Title')
-                    ->placeholder('My WordPress Site'),
+                    ->placeholder('My WordPress Site')
+                    ->order(20),
                 DynamicField::make('username')
                     ->text()
                     ->label('Admin Username')
-                    ->placeholder('admin'),
+                    ->placeholder('admin')
+                    ->order(30),
                 DynamicField::make('password')
                     ->text()
-                    ->label('Admin Password'),
+                    ->label('Admin Password')
+                    ->order(40),
                 DynamicField::make('email')
                     ->text()
-                    ->label('Admin Email'),
+                    ->label('Admin Email')
+                    ->order(50),
                 DynamicField::make('database')
                     ->text()
                     ->label('Database Name')
-                    ->placeholder('wordpress'),
+                    ->placeholder('wordpress')
+                    ->order(60),
                 DynamicField::make('database_user')
                     ->text()
                     ->label('Database User')
-                    ->placeholder('wp_user'),
+                    ->placeholder('wp_user')
+                    ->order(70),
                 DynamicField::make('database_password')
                     ->text()
-                    ->label('Database Password'),
+                    ->label('Database Password')
+                    ->order(80),
             ]))
             ->register();
     }

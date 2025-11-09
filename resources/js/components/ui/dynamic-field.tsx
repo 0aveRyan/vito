@@ -8,7 +8,7 @@ import { DynamicFieldConfig } from '@/types/dynamic-field-config';
 import InputError from '@/components/ui/input-error';
 import { FormField } from '@/components/ui/form';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { TriangleAlertIcon } from 'lucide-react';
+import { LockIcon, TriangleAlertIcon } from 'lucide-react';
 import ServerProviderSelect from '@/pages/server-providers/components/server-provider-select';
 
 interface DynamicFieldProps {
@@ -58,13 +58,80 @@ export default function DynamicField({ value, onChange, config, error }: Dynamic
     );
   }
 
+  // Handle section
+  if (config?.type === 'section') {
+    const IconComponent = config.icon && LucideIcons[config.icon as keyof typeof LucideIcons];
+
+    // Non-collapsible section - just a visual separator
+    if (config.canCollapse === false) {
+      return (
+        <div key={`section-${config.name}`} className="space-y-4">
+          <div className="flex items-center gap-2 pt-4">
+            {IconComponent && <IconComponent className="h-5 w-5 text-muted-foreground" />}
+            <h3 className="text-lg font-semibold">{label}</h3>
+          </div>
+          {config.description && <p className="text-sm text-muted-foreground">{config.description}</p>}
+          <Separator />
+          <div className="space-y-4 pl-2">
+            {config.children?.map((childConfig) => (
+              <DynamicField
+                key={`field-${childConfig.name}`}
+                value={value?.[childConfig.name as keyof typeof value]}
+                onChange={(childValue) => onChange({ ...(value as object), [childConfig.name]: childValue })}
+                config={childConfig}
+                error={error?.[childConfig.name as keyof typeof error]}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Collapsible section - accordion style
+    return (
+      <Collapsible key={`section-${config.name}`} defaultOpen={config.defaultOpen || false} className="group/collapsible rounded-lg border p-4 my-4">
+        <CollapsibleTrigger className="flex w-full items-center justify-between">
+          <div className="flex items-center gap-2">
+            {IconComponent && <IconComponent className="h-5 w-5 text-muted-foreground" />}
+            <Label className="cursor-pointer text-base font-semibold">{label}</Label>
+          </div>
+          <ChevronRightIcon className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+        </CollapsibleTrigger>
+        {config.description && <p className="text-sm text-muted-foreground mt-2">{config.description}</p>}
+        <CollapsibleContent className="mt-4 space-y-4">
+          {config.children?.map((childConfig) => (
+            <DynamicField
+              key={`field-${childConfig.name}`}
+              value={value?.[childConfig.name as keyof typeof value]}
+              onChange={(childValue) => onChange({ ...(value as object), [childConfig.name]: childValue })}
+              config={childConfig}
+              error={error?.[childConfig.name as keyof typeof error]}
+            />
+          ))}
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  }
+
   // Handle checkbox
   if (config?.type === 'checkbox') {
+    const isLocked = config?.locked || false;
+    const displayValue = isLocked && config?.enforcedValue !== undefined ? config.enforcedValue : value;
+
     return (
       <FormField>
         <div className="flex items-center space-x-2">
-          <Switch id={`switch-${config.name}`} defaultChecked={value as boolean} onCheckedChange={onChange} />
-          <Label htmlFor={`switch-${config.name}`}>{label}</Label>
+          <Switch
+            id={`switch-${config.name}`}
+            defaultChecked={displayValue as boolean}
+            onCheckedChange={onChange}
+            disabled={isLocked}
+            className={isLocked ? 'opacity-60 cursor-not-allowed' : ''}
+          />
+          <Label htmlFor={`switch-${config.name}`} className="flex items-center gap-2">
+            {label}
+            {isLocked && <LockIcon className="h-3 w-3 text-muted-foreground" />}
+          </Label>
           {config.description && <p className="text-muted-foreground text-xs">{config.description}</p>}
           <InputError message={error} />
         </div>
@@ -74,13 +141,17 @@ export default function DynamicField({ value, onChange, config, error }: Dynamic
 
   // Handle select
   if (config?.type === 'select' && config.options) {
+    const isLocked = config?.locked || false;
+    const displayValue = isLocked && config?.enforcedValue !== undefined ? config.enforcedValue : value;
+
     return (
       <FormField>
-        <Label htmlFor={`field-${config.name}`} className="capitalize">
+        <Label htmlFor={`field-${config.name}`} className="capitalize flex items-center gap-2">
           {label}
+          {isLocked && <LockIcon className="h-3 w-3 text-muted-foreground" />}
         </Label>
-        <Select defaultValue={value as string} onValueChange={onChange}>
-          <SelectTrigger id={`field-${config.name}`}>
+        <Select defaultValue={displayValue as string} onValueChange={onChange} disabled={isLocked}>
+          <SelectTrigger id={`field-${config.name}`} className={isLocked ? 'opacity-60 cursor-not-allowed' : ''}>
             <SelectValue placeholder={config.placeholder || `Select ${label}`} />
           </SelectTrigger>
           <SelectContent>
@@ -102,18 +173,23 @@ export default function DynamicField({ value, onChange, config, error }: Dynamic
 
   // Handle textarea
   if (config?.type === 'textarea') {
+    const isLocked = config?.locked || false;
+    const displayValue = isLocked && config?.enforcedValue !== undefined ? config.enforcedValue : value;
+
     return (
       <FormField>
-        <Label htmlFor={`field-${config.name}`} className="capitalize">
+        <Label htmlFor={`field-${config.name}`} className="capitalize flex items-center gap-2">
           {label}
+          {isLocked && <LockIcon className="h-3 w-3 text-muted-foreground" />}
         </Label>
         <Textarea
           name={config.name}
           id={`field-${config.name}`}
-          defaultValue={(value as string) || ''}
+          defaultValue={(displayValue as string) || ''}
           placeholder={config.placeholder}
           onChange={(e) => onChange(e.target.value)}
           className={config.className}
+          disabled={isLocked}
         />
         {config.description && <p className="text-muted-foreground text-xs">{config.description}</p>}
         <InputError message={error} />
@@ -141,17 +217,24 @@ export default function DynamicField({ value, onChange, config, error }: Dynamic
     props.placeholder = config.placeholder;
   }
 
+  // Handle locked with enforcedValue
+  const isLocked = config?.locked || false;
+  const displayValue = isLocked && config?.enforcedValue !== undefined ? config.enforcedValue : value;
+
   return (
     <FormField>
-      <Label htmlFor={`field-${config.name}`} className="capitalize">
+      <Label htmlFor={`field-${config.name}`} className="capitalize flex items-center gap-2">
         {label}
+        {isLocked && <LockIcon className="h-3 w-3 text-muted-foreground" />}
       </Label>
       <Input
         type="text"
         name={config.name}
         id={`field-${config.name}`}
-        defaultValue={(value as string) || ''}
+        defaultValue={(displayValue as string) || ''}
         onChange={(e) => onChange(e.target.value)}
+        disabled={isLocked}
+        className={isLocked ? 'opacity-60 cursor-not-allowed' : ''}
         {...props}
       />
       {config.description && <p className="text-muted-foreground text-xs">{config.description}</p>}
